@@ -4,8 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { parseDocument } from "@/lib/services/document-parser"
-import { DocumentContent, CreateDocumentRequest } from "@/lib/types/document"
+import { parseDocxDocument } from "@/lib/services/docx-parser"
+import { renderTemplatePreview } from "@/lib/services/template-renderer"
+import { DocumentContent } from "@/lib/types/document"
 import { getTemplateConfig, getTemplateIdFromName } from "@/lib/templates/template-registry"
 import OpenAI from "openai"
 
@@ -18,6 +19,16 @@ const getAIClient = () => {
   return new OpenAI({ apiKey })
 }
 
+/**
+ * API Route: /api/preview
+ * 
+ * Handles the complete Create button flow:
+ * 1. Receives form data (metadata, template, file)
+ * 2. Uses docxParser to extract structured content (headings, paragraphs, lists, tables)
+ * 3. Uses templateMapper to map content to template layout
+ * 4. Uses templateRenderer to generate preview
+ * 5. Returns preview data for frontend rendering
+ */
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
@@ -102,12 +113,17 @@ export async function POST(request: NextRequest) {
       const useAI = process.env.ENABLE_AI_PARSING === "true" && !!aiClient
 
       try {
-        console.log("Starting document parsing...", {
+        console.log("Starting document parsing with enhanced parser...", {
           fileName: file.name,
           fileSize: file.size,
           fileType: file.type,
         })
-        content = await parseDocument(file, useAI, aiClient)
+        // STEP 2: Use enhanced docx parser that extracts:
+        // - Headings (H1, H2, H3) with proper hierarchy
+        // - Paragraphs (converted to concise bullet points)
+        // - Lists (bulleted and numbered)
+        // - Tables (headers and rows)
+        content = await parseDocxDocument(file, useAI, aiClient)
         console.log("Document parsed successfully, sections:", content.length)
       } catch (error) {
         console.error("Document parsing error:", error)
@@ -147,12 +163,20 @@ export async function POST(request: NextRequest) {
       content,
     }
 
+    // STEP 3 & 4: Use template renderer which internally:
+    // - Maps content to template structure (templateMapper)
+    // - Filters sections based on template navigation levels
+    // - Applies template-specific transformations
+    // - Validates content matches template requirements
+    // - Generates preview ready for rendering
+    const renderedPreview = renderTemplatePreview(documentContent, templateId)
+
     // Generate preview response
     const previewResponse = {
       success: true,
-      preview: documentContent,
+      preview: renderedPreview.documentContent,
       templateId,
-      templateConfig,
+      templateConfig: renderedPreview.templateConfig,
     }
 
     return NextResponse.json(previewResponse)

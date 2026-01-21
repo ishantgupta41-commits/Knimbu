@@ -11,10 +11,16 @@ export interface DocumentMetadata {
 }
 
 export interface ContentBlock {
-  type: "paragraph" | "heading" | "list"
+  type: "paragraph" | "heading" | "list" | "table"
   text: string
   level?: number // For headings (1-3)
   items?: string[] // For lists
+  tableData?: TableData // For tables
+}
+
+export interface TableData {
+  headers: string[]
+  rows: string[][]
 }
 
 export interface DocumentSection {
@@ -60,6 +66,10 @@ export interface Accelerators {
   prePopulateChapterBanners: boolean
   prePopulateSubchapterImages: boolean
 }
+
+// Type aliases for cleaner imports
+export type Features = DocumentFeatures
+export type Sections = DocumentSections
 
 export interface CreateDocumentRequest {
   metadata: DocumentMetadata

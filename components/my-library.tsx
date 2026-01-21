@@ -10,6 +10,7 @@ import { DashboardDocument } from "@/lib/types/dashboard"
 
 interface MyLibraryProps {
   documents?: DashboardDocument[]
+  onPreview?: (document: DashboardDocument) => void
 }
 
 // Default mock data for when no documents are provided
@@ -112,7 +113,7 @@ const defaultDocuments: DashboardDocument[] = [
   },
 ]
 
-export function MyLibrary({ documents = defaultDocuments }: MyLibraryProps) {
+export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibraryProps) {
   const [viewMode, setViewMode] = useState("my") // "my" or "all"
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState("")
@@ -221,16 +222,31 @@ export function MyLibrary({ documents = defaultDocuments }: MyLibraryProps) {
                   </div>
 
                   <div className="space-y-1">
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Calendar className="h-3 w-3" />
-                      <span>Published {doc.published}</span>
-                    </div>
+                    {doc.published && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        <span>Published {doc.published}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Eye className="h-3 w-3" />
-                      <span>{doc.views.toLocaleString()} views</span>
+                      <span>{(doc.views || 0).toLocaleString()} views</span>
                     </div>
                   </div>
                 </div>
+
+                <Button
+                  variant="outline"
+                  className="w-full text-xs bg-transparent hover:bg-secondary mt-auto"
+                  style={{
+                    borderColor: "#628F07",
+                    color: "#628F07",
+                  }}
+                  onClick={() => onPreview?.(doc)}
+                >
+                  <Eye className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
+                  Preview
+                </Button>
               </div>
             </div>
           </Card>

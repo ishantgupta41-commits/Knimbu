@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Upload, X, Check, Info, FileText, BookOpen, Zap, Layers, Grid3x3, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -154,6 +154,15 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
     templateConfig: TemplateConfig
   } | null>(null)
 
+  // Debug: Log state changes
+  useEffect(() => {
+    console.log("Preview state changed:", {
+      showPreview,
+      hasPreviewData: !!previewData,
+      isGeneratingPreview,
+    })
+  }, [showPreview, previewData, isGeneratingPreview])
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file && file.size <= 20 * 1024 * 1024) {
@@ -183,53 +192,56 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
     setAccelerators((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  /**
+   * Handle Create button click
+   * 
+   * Flow:
+   * 1. Parse and validate all form inputs using formDataParser service
+   * 2. Convert to FormData and send to API
+   * 3. API uses docxParser to extract content (headings, paragraphs, lists, tables)
+   * 4. API uses templateMapper to map content to selected template layout
+   * 5. API uses templateRenderer to generate preview
+   * 6. Display preview in modal without page reload
+   */
   const handleCreate = async () => {
-    if (!title.trim()) {
-      toast.error("Please enter a document title")
-      return
-    }
-
-    if (!selectedTemplate) {
-      toast.error("Please select a template")
-      return
-    }
-
     setIsGeneratingPreview(true)
 
     try {
-      // Prepare form data
-      const formData = new FormData()
-      formData.append("title", title)
-      formData.append("subtitle", subtitle)
-      formData.append("publicationDate", listedPublicationDate)
-      formData.append("templateName", selectedTemplate)
-
-      // Get selected authors and collections
-      const selectedAuthorsData = AUTHORS.filter((author) => selectedAuthors.includes(author.id))
-      const selectedCollectionsData = COLLECTIONS.filter((collection) =>
-        selectedCollections.includes(collection.id)
-      )
-
-      formData.append("authors", JSON.stringify(selectedAuthorsData))
-      formData.append("collections", JSON.stringify(selectedCollectionsData))
-      formData.append("features", JSON.stringify(features))
-      formData.append("sections", JSON.stringify(sections))
-      formData.append("accelerators", JSON.stringify(accelerators))
-      formData.append(
-        "publicationOptions",
-        JSON.stringify({
-          immediatePublish: publicationOption === "immediatePublish",
-          schedulePublish: publicationOption === "schedulePublish" ? listedPublicationDate : undefined,
-          draftOnly: publicationOption === "draftOnly",
-          publishOnOrgWebsite,
-          publishOnKnimbu,
-        })
-      )
-
-      // Add file if uploaded
-      if (uploadedFile) {
-        formData.append("file", uploadedFile)
+      // STEP 1: Use formDataParser service to parse and validate all form inputs
+      // This service handles: title, subtitle, date, authors, collections, features,
+      // sections, accelerators, publication options, template selection, and file upload
+      const { parseFormData, toFormData } = await import("@/lib/services/form-data-parser")
+      
+      const formInputs = {
+        title,
+        subtitle,
+        listedPublicationDate,
+        selectedTemplate: selectedTemplate || "",
+        selectedAuthors,
+        selectedCollections,
+        features,
+        sections,
+        accelerators,
+        publicationOption,
+        publishOnOrgWebsite,
+        publishOnKnimbu,
+        uploadedFile,
       }
+
+      // Parse and validate form data (throws error if validation fails)
+      // Validation includes: required fields, file type/size, template selection
+      let parsedData
+      try {
+        parsedData = parseFormData(formInputs, AUTHORS, COLLECTIONS)
+      } catch (validationError) {
+        const errorMessage = validationError instanceof Error ? validationError.message : "Validation failed"
+        toast.error(errorMessage)
+        setIsGeneratingPreview(false)
+        return
+      }
+      
+      // Convert parsed data to FormData for API submission
+      const formData = toFormData(parsedData)
 
       // Call API
       const response = await fetch("/api/preview", {
@@ -250,6 +262,7 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
       }
 
       const result = await response.json()
+      console.log("API Response:", result)
 
       if (result.success) {
         // Get template config
@@ -258,15 +271,31 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
           throw new Error("Invalid template configuration")
         }
 
-        // Set preview data and show modal
-        setPreviewData({
+        // Set preview data and show modal immediately
+        const previewDataToSet = {
           documentContent: result.preview,
           templateConfig,
+        }
+        
+        console.log("Setting preview data:", {
+          hasPreviewData: !!previewDataToSet,
+          hasDocumentContent: !!result.preview,
+          hasTemplateConfig: !!templateConfig,
+          templateId: result.templateId,
+          title: result.preview?.document?.title,
         })
-        setShowPreview(true)
+        
+        setPreviewData(previewDataToSet)
+        
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+          setShowPreview(true)
+          console.log("Modal should now be visible")
+        })
+
         toast.success("Preview generated successfully!")
 
-        // Create dashboard document and save it
+        // Create dashboard document and save it (but don't navigate away yet - let preview show first)
         if (onDocumentCreated) {
           const dashboardDoc: DashboardDocument = {
             id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -279,7 +308,9 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
             status: publicationOption === "immediatePublish" ? "published" : "draft",
             documentContent: result.preview,
             image: "/placeholder.jpg", // Default placeholder, can be enhanced later
+            views: 0, // Initialize views to 0 for new documents
           }
+          // Save document but don't navigate - preview will show
           onDocumentCreated(dashboardDoc)
         }
       } else {
@@ -287,7 +318,13 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
       }
     } catch (error) {
       console.error("Error generating preview:", error)
-      toast.error(error instanceof Error ? error.message : "Failed to generate preview")
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate preview"
+      toast.error(errorMessage)
+      console.error("Full error details:", {
+        error,
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+      })
     } finally {
       setIsGeneratingPreview(false)
     }
@@ -736,11 +773,14 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
         </Button>
       </div>
 
-      {/* Preview Modal */}
+      {/* Preview Modal - Always render when previewData exists, control visibility with open prop */}
       {previewData && (
         <PreviewModal
           open={showPreview}
-          onOpenChange={setShowPreview}
+          onOpenChange={(open) => {
+            console.log("PreviewModal onOpenChange:", open)
+            setShowPreview(open)
+          }}
           documentContent={previewData.documentContent}
           templateConfig={previewData.templateConfig}
         />

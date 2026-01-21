@@ -1,6 +1,6 @@
 "use client"
 
-import { Edit, Layers, Grid3x3 } from "lucide-react"
+import { Edit, Layers, Grid3x3, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Image from "next/image"
@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns"
 
 interface UnpublishedDocumentsProps {
   documents?: DashboardDocument[]
+  onPreview?: (document: DashboardDocument) => void
 }
 
 // Default mock data for when no documents are provided
@@ -37,7 +38,7 @@ const defaultUnpublishedDocs = [
   },
 ]
 
-export function UnpublishedDocuments({ documents = defaultUnpublishedDocs }: UnpublishedDocumentsProps) {
+export function UnpublishedDocuments({ documents = defaultUnpublishedDocs, onPreview }: UnpublishedDocumentsProps) {
   return (
     <section>
       <div className="mb-6">
@@ -94,17 +95,31 @@ export function UnpublishedDocuments({ documents = defaultUnpublishedDocs }: Unp
                       </div>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      className="w-full text-xs bg-transparent hover:bg-secondary mt-auto"
-                      style={{
-                        borderColor: "#628F07",
-                        color: "#628F07",
-                      }}
-                    >
-                      <Edit className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
-                      Edit
-                    </Button>
+                    <div className="flex gap-2 mt-auto">
+                      <Button
+                        variant="outline"
+                        className="flex-1 text-xs bg-transparent hover:bg-secondary"
+                        style={{
+                          borderColor: "#628F07",
+                          color: "#628F07",
+                        }}
+                        onClick={() => onPreview?.(doc)}
+                      >
+                        <Eye className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
+                        Preview
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 text-xs bg-transparent hover:bg-secondary"
+                        style={{
+                          borderColor: "#628F07",
+                          color: "#628F07",
+                        }}
+                      >
+                        <Edit className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
+                        Edit
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </Card>

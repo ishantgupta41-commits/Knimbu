@@ -6,12 +6,16 @@ import { DashboardHeader } from "@/components/dashboard-header"
 import { MyLibrary } from "@/components/my-library"
 import { UnpublishedDocuments } from "@/components/unpublished-documents"
 import { CreateDocumentView } from "@/components/create-document-view"
+import { PreviewModal } from "@/components/preview-modal"
 import { DashboardDocument } from "@/lib/types/dashboard"
+import { getTemplateConfig } from "@/lib/templates/template-registry"
 
 export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [view, setView] = useState<"dashboard" | "create">("dashboard")
   const [documents, setDocuments] = useState<DashboardDocument[]>([])
+  const [previewDocument, setPreviewDocument] = useState<DashboardDocument | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   const handleNavClick = () => {
     setView("dashboard")
@@ -20,7 +24,12 @@ export default function DashboardPage() {
 
   const handleDocumentCreated = useCallback((document: DashboardDocument) => {
     setDocuments((prev) => [document, ...prev])
-    setView("dashboard")
+    // Don't navigate away - keep showing the create view so preview can show
+  }, [])
+
+  const handlePreview = useCallback((document: DashboardDocument) => {
+    setPreviewDocument(document)
+    setShowPreview(true)
   }, [])
 
   return (
@@ -37,8 +46,14 @@ export default function DashboardPage() {
                 <div className="space-y-4 pt-0">
                   <h1 className="text-4xl font-bold text-foreground">Library</h1>
                 </div>
-                <UnpublishedDocuments documents={documents.filter((d) => d.status === "draft")} />
-                <MyLibrary documents={documents.filter((d) => d.status === "published")} />
+                <UnpublishedDocuments 
+                  documents={documents.filter((d) => d.status === "draft")} 
+                  onPreview={handlePreview}
+                />
+                <MyLibrary 
+                  documents={documents.filter((d) => d.status === "published")} 
+                  onPreview={handlePreview}
+                />
               </div>
             ) : (
               <CreateDocumentView onBack={() => setView("dashboard")} onDocumentCreated={handleDocumentCreated} />
@@ -46,6 +61,16 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Preview Modal for dashboard documents */}
+      {previewDocument && previewDocument.documentContent && (
+        <PreviewModal
+          open={showPreview}
+          onOpenChange={setShowPreview}
+          documentContent={previewDocument.documentContent}
+          templateConfig={getTemplateConfig(previewDocument.templateId) || getTemplateConfig("knowledge-hub")!}
+        />
+      )}
     </div>
   )
 }
