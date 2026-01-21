@@ -7,7 +7,7 @@
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { DocumentPreview } from "@/components/document-preview"
-import { DocumentContent, TemplateConfig } from "@/lib/types/document"
+import { DocumentContent, TemplateConfig, Features, Sections } from "@/lib/types/document"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -16,6 +16,8 @@ interface PreviewModalProps {
   onOpenChange: (open: boolean) => void
   documentContent: DocumentContent
   templateConfig: TemplateConfig
+  features?: Features
+  sections?: Sections
 }
 
 export function PreviewModal({
@@ -23,6 +25,8 @@ export function PreviewModal({
   onOpenChange,
   documentContent,
   templateConfig,
+  features,
+  sections,
 }: PreviewModalProps) {
   console.log("PreviewModal render:", { 
     open, 
@@ -65,7 +69,12 @@ export function PreviewModal({
               minHeight: 0
             }}
           >
-            <DocumentPreview documentContent={documentContent} templateConfig={templateConfig} />
+            <DocumentPreview 
+              documentContent={documentContent} 
+              templateConfig={templateConfig}
+              features={features}
+              sections={sections}
+            />
           </div>
         </div>
       </DialogContent>

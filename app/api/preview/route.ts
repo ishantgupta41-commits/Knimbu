@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { parseDocxDocument } from "@/lib/services/docx-parser"
 import { renderTemplatePreview } from "@/lib/services/template-renderer"
+import { extractKnowledge } from "@/lib/services/knowledge-extractor"
+import { mapContentToSections, enrichContentWithAI } from "@/lib/services/content-mapper"
 import { DocumentContent } from "@/lib/types/document"
 import { getTemplateConfig, getTemplateIdFromName } from "@/lib/templates/template-registry"
 import OpenAI from "openai"
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
         )
       }
     } else {
-      // Create empty document structure
+      // Create empty document structure (will be enriched with knowledge extraction)
       content = [
         {
           id: "section-1",
@@ -151,8 +153,12 @@ export async function POST(request: NextRequest) {
       ]
     }
 
-    // Merge user metadata with document content
-    const documentContent: DocumentContent = {
+    // STEP 2: Extract knowledge from document (MANDATORY - ALWAYS RUNS)
+    // The document MUST contribute content - extract meaningful knowledge
+    // This runs even if document is sparse - fallback knowledge is extracted
+    
+    // Create document content for knowledge extraction (ALWAYS)
+    const tempDocumentContent: DocumentContent = {
       document: {
         title,
         subtitle: subtitle || undefined,
@@ -161,6 +167,88 @@ export async function POST(request: NextRequest) {
         collections,
       },
       content,
+    }
+
+    // Extract knowledge from document (MANDATORY - never skip)
+    // This will extract from available content or use fallback strategies
+    const knowledge = extractKnowledge(tempDocumentContent)
+    console.log("Extracted knowledge:", {
+      topics: knowledge.topics.length,
+      facts: knowledge.facts.length,
+      definitions: knowledge.definitions.length,
+      summaries: knowledge.summaries.length,
+      steps: knowledge.steps.length,
+      relatedContent: knowledge.relatedContent.length,
+    })
+    
+    // Map knowledge to enabled sections (ALWAYS - ensures sections have content)
+    const mappedSections = mapContentToSections(knowledge, sections)
+    console.log("Mapped sections:", mappedSections.length, "sections with content")
+    
+    // Enrich content with AI if available
+    const aiClient = getAIClient()
+    if (aiClient && process.env.ENABLE_AI_PARSING === "true" && mappedSections.length > 0) {
+      // Create document context for AI enrichment
+      const documentContext = [
+        title,
+        subtitle,
+        ...content.map(s => `${s.heading}: ${s.blocks.map(b => 
+          b.type === "paragraph" ? b.text : 
+          b.type === "list" ? b.items?.join(" ") : ""
+        ).filter(Boolean).join(" ")}`)
+      ].filter(Boolean).join(" ")
+      
+      // Enrich each section's content
+      for (const mappedSection of mappedSections) {
+        if (mappedSection.content.length > 0) {
+          try {
+            const enriched = await enrichContentWithAI(
+              mappedSection.content,
+              documentContext.substring(0, 2000), // Limit context size
+              aiClient
+            )
+            if (enriched.length > 0) {
+              mappedSection.content = enriched
+              console.log(`Enriched section ${mappedSection.sectionKey}: ${enriched.length} items`)
+            }
+          } catch (error) {
+            console.warn(`AI enrichment failed for ${mappedSection.sectionKey}, using original:`, error)
+            // Continue with original content - never fail completely
+          }
+        }
+      }
+    }
+
+    // Reconstruct content with enriched, mapped knowledge
+    // This ensures sections have meaningful content from the document
+    let enrichedContent = content
+    if (mappedSections.length > 0) {
+      enrichedContent = mappedSections.map((mapped, index) => ({
+        id: `section-${index + 1}`,
+        heading: mapped.title,
+        level: 1,
+        blocks: mapped.content.length > 0 
+          ? mapped.content.map((item) => ({
+              type: "list" as const,
+              items: [item],
+            }))
+          : [{
+              type: "list" as const,
+              items: [`Content from: ${title}`],
+            }],
+      }))
+    }
+
+    // Merge user metadata with enriched document content
+    const documentContent: DocumentContent = {
+      document: {
+        title,
+        subtitle: subtitle || undefined,
+        publicationDate: publicationDate || undefined,
+        authors,
+        collections,
+      },
+      content: enrichedContent,
     }
 
     // STEP 3 & 4: Use template renderer which internally:
@@ -172,11 +260,14 @@ export async function POST(request: NextRequest) {
     const renderedPreview = renderTemplatePreview(documentContent, templateId)
 
     // Generate preview response
+    // Include features and sections so template components can render feature UI elements
     const previewResponse = {
       success: true,
       preview: renderedPreview.documentContent,
       templateId,
       templateConfig: renderedPreview.templateConfig,
+      features, // Pass features to template component
+      sections, // Pass sections to template component
     }
 
     return NextResponse.json(previewResponse)

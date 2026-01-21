@@ -272,9 +272,12 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
         }
 
         // Set preview data and show modal immediately
+        // Include features and sections so template can render feature UI elements
         const previewDataToSet = {
           documentContent: result.preview,
           templateConfig,
+          features: result.features || features, // Pass features to preview
+          sections: result.sections || sections, // Pass sections to preview
         }
         
         console.log("Setting preview data:", {
@@ -783,6 +786,8 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
           }}
           documentContent={previewData.documentContent}
           templateConfig={previewData.templateConfig}
+          features={previewData.features}
+          sections={previewData.sections}
         />
       )}
     </div>
