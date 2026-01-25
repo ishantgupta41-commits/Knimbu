@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { MyLibrary } from "@/components/my-library"
@@ -11,11 +13,62 @@ import { DashboardDocument } from "@/lib/types/dashboard"
 import { getTemplateConfig } from "@/lib/templates/template-registry"
 
 export default function DashboardPage() {
+  const { isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push("/login")
+    }
+  }, [isAuthenticated, isLoading, router])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [view, setView] = useState<"dashboard" | "create">("dashboard")
   const [documents, setDocuments] = useState<DashboardDocument[]>([])
   const [previewDocument, setPreviewDocument] = useState<DashboardDocument | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  const [previewFeatures, setPreviewFeatures] = useState<any>(null)
+  const [previewSections, setPreviewSections] = useState<any>(null)
+
+  // Load published templates from API
+  useEffect(() => {
+    const loadTemplates = async () => {
+      if (!isAuthenticated || isLoading) return
+      
+      try {
+        const userId = localStorage.getItem("knimbu_user_id") || "default-user"
+        const response = await fetch("/api/templates", {
+          headers: {
+            "x-user-id": userId
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.templates) {
+            // Convert templates to dashboard documents
+            const dashboardDocs: DashboardDocument[] = data.templates.map((template: any) => ({
+              id: template.id,
+              title: template.documentContent?.document?.title || "Untitled",
+              subtitle: template.documentContent?.document?.subtitle,
+              template: template.templateConfig?.name || "Unknown",
+              templateId: template.templateConfig?.id || "knowledge-hub",
+              collections: template.documentContent?.document?.collections?.map((c: any) => c.name) || [],
+              createdAt: template.createdAt,
+              status: "published" as const,
+              documentContent: template.documentContent,
+              image: "/placeholder.jpg",
+              views: 0,
+            }))
+            setDocuments(dashboardDocs)
+          }
+        }
+      } catch (error) {
+        console.error("Error loading templates:", error)
+      }
+    }
+
+    loadTemplates()
+  }, [isAuthenticated, isLoading])
 
   const handleNavClick = () => {
     setView("dashboard")
@@ -31,6 +84,55 @@ export default function DashboardPage() {
     setPreviewDocument(document)
     setShowPreview(true)
   }, [])
+
+  const handleTemplatePublished = useCallback((templateId: string) => {
+    // Reload templates after publishing
+    const loadTemplates = async () => {
+      try {
+        const userId = localStorage.getItem("knimbu_user_id") || "default-user"
+        const response = await fetch("/api/templates", {
+          headers: {
+            "x-user-id": userId
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.templates) {
+            const dashboardDocs: DashboardDocument[] = data.templates.map((template: any) => ({
+              id: template.id,
+              title: template.documentContent?.document?.title || "Untitled",
+              subtitle: template.documentContent?.document?.subtitle,
+              template: template.templateConfig?.name || "Unknown",
+              templateId: template.templateConfig?.id || "knowledge-hub",
+              collections: template.documentContent?.document?.collections?.map((c: any) => c.name) || [],
+              createdAt: template.createdAt,
+              status: "published" as const,
+              documentContent: template.documentContent,
+              image: "/placeholder.jpg",
+              views: 0,
+            }))
+            setDocuments(dashboardDocs)
+          }
+        }
+      } catch (error) {
+        console.error("Error loading templates:", error)
+      }
+    }
+    loadTemplates()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -56,7 +158,11 @@ export default function DashboardPage() {
                 />
               </div>
             ) : (
-              <CreateDocumentView onBack={() => setView("dashboard")} onDocumentCreated={handleDocumentCreated} />
+              <CreateDocumentView 
+                onBack={() => setView("dashboard")} 
+                onDocumentCreated={handleDocumentCreated}
+                onTemplatePublished={handleTemplatePublished}
+              />
             )}
           </div>
         </main>
@@ -69,6 +175,10 @@ export default function DashboardPage() {
           onOpenChange={setShowPreview}
           documentContent={previewDocument.documentContent}
           templateConfig={getTemplateConfig(previewDocument.templateId) || getTemplateConfig("knowledge-hub")!}
+          onPublished={(templateId) => {
+            handleTemplatePublished(templateId)
+            setShowPreview(false)
+          }}
         />
       )}
     </div>

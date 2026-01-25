@@ -5,11 +5,14 @@
 
 "use client"
 
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { DocumentPreview } from "@/components/document-preview"
 import { DocumentContent, TemplateConfig, Features, Sections } from "@/lib/types/document"
-import { X } from "lucide-react"
+import { X, Rocket, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 
 interface PreviewModalProps {
   open: boolean
@@ -18,6 +21,8 @@ interface PreviewModalProps {
   templateConfig: TemplateConfig
   features?: Features
   sections?: Sections
+  templateId?: string
+  onPublished?: (templateId: string) => void
 }
 
 export function PreviewModal({
@@ -27,13 +32,65 @@ export function PreviewModal({
   templateConfig,
   features,
   sections,
+  templateId,
+  onPublished,
 }: PreviewModalProps) {
+  const router = useRouter()
+  const [isPublishing, setIsPublishing] = useState(false)
+
   console.log("PreviewModal render:", { 
     open, 
     hasDocument: !!documentContent, 
     hasTemplate: !!templateConfig,
     title: documentContent?.document?.title 
   })
+
+  const handlePublish = async () => {
+    try {
+      setIsPublishing(true)
+      const userId = localStorage.getItem("knimbu_user_id") || "default-user"
+      
+      // Save template to backend
+      const response = await fetch("/api/templates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId
+        },
+        body: JSON.stringify({
+          documentContent,
+          templateId: templateConfig.id,
+          features: features || {},
+          sections: sections || {},
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.template?.id) {
+        const savedTemplateId = data.template.id
+        toast.success("Template published successfully!")
+        
+        // Close modal
+        onOpenChange(false)
+        
+        // Notify parent component
+        if (onPublished) {
+          onPublished(savedTemplateId)
+        }
+        
+        // Navigate to preview page
+        router.push(`/preview/${savedTemplateId}`)
+      } else {
+        toast.error(data.error || "Failed to publish template")
+      }
+    } catch (error) {
+      console.error("Error publishing template:", error)
+      toast.error("Failed to publish template")
+    } finally {
+      setIsPublishing(false)
+    }
+  }
 
   if (!documentContent || !templateConfig) {
     console.warn("PreviewModal: Missing required props", { documentContent, templateConfig })
@@ -50,16 +107,42 @@ export function PreviewModal({
         <DialogTitle className="sr-only">
           Document Preview: {documentContent.document.title}
         </DialogTitle>
+        {/* Action Buttons Bar - Fixed at top, above content */}
+        <div className="sticky top-0 z-[100] bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">Preview Mode</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handlePublish}
+              disabled={isPublishing}
+              className="bg-[#628F07] hover:bg-[#628F07]/90 text-white"
+              size="default"
+            >
+              {isPublishing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                <>
+                  <Rocket className="h-4 w-4 mr-2" />
+                  Publish
+                </>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hover:bg-gray-100"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close preview"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
         <div className="relative flex-1 flex flex-col min-h-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-4 right-4 z-50 bg-background/90 backdrop-blur-sm shadow-md"
-            onClick={() => onOpenChange(false)}
-            aria-label="Close preview"
-          >
-            <X className="h-4 w-4" />
-          </Button>
           <div 
             className="flex-1 w-full overflow-y-auto overflow-x-hidden preview-scroll"
             style={{ 

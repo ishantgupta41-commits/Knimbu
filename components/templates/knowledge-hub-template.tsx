@@ -35,9 +35,13 @@ import {
   Star,
   TrendingUp,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 
 interface KnowledgeHubTemplateProps {
   documentContent: DocumentContent
@@ -54,14 +58,220 @@ export function KnowledgeHubTemplate({
   sections,
   onClose
 }: KnowledgeHubTemplateProps) {
+  // Validate documentContent structure with detailed logging
+  if (!documentContent) {
+    console.error("documentContent is null/undefined:", documentContent)
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Template</h1>
+          <p className="text-gray-600">The template data is missing.</p>
+        </div>
+      </div>
+    )
+  }
+  
+  if (!documentContent.document) {
+    console.error("documentContent.document is missing:", {
+      documentContent,
+      keys: Object.keys(documentContent || {}),
+      type: typeof documentContent
+    })
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Template</h1>
+          <p className="text-gray-600">The template document structure is invalid.</p>
+          <p className="text-sm text-gray-500 mt-2">Please check the console for details.</p>
+        </div>
+      </div>
+    )
+  }
+  
+  // Ensure content array exists
+  if (!documentContent.content || !Array.isArray(documentContent.content)) {
+    console.warn("documentContent.content is missing or not an array, initializing empty array")
+    documentContent.content = []
+  }
+  
+  // Ensure document has required fields
+  if (!documentContent.document.title) {
+    console.warn("Document missing title, using default")
+    documentContent.document.title = "Untitled Document"
+  }
+  
+  // Ensure document.collections exists
+  if (!documentContent.document.collections || !Array.isArray(documentContent.document.collections)) {
+    documentContent.document.collections = []
+  }
+  
+  // Ensure document.authors exists
+  if (!documentContent.document.authors || !Array.isArray(documentContent.document.authors)) {
+    documentContent.document.authors = []
+  }
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null)
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null)
+  const [selectedSection, setSelectedSection] = useState<keyof Sections | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const synthRef = useRef<SpeechSynthesis | null>(null)
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+
+  // Initialize speech synthesis
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      synthRef.current = window.speechSynthesis
+    }
+    return () => {
+      // Cleanup: stop any ongoing speech when component unmounts
+      if (synthRef.current) {
+        synthRef.current.cancel()
+      }
+    }
+  }, [])
+
+  // Handle read aloud functionality
+  const handleReadAloud = () => {
+    if (!synthRef.current) {
+      alert("Your browser doesn't support text-to-speech")
+      return
+    }
+
+    if (isPlaying && !isPaused) {
+      // Pause
+      synthRef.current.pause()
+      setIsPaused(true)
+    } else if (isPaused) {
+      // Resume
+      synthRef.current.resume()
+      setIsPaused(false)
+    } else {
+      // Start reading
+      const textToRead = [
+        documentContent.document.title,
+        documentContent.document.subtitle || "",
+        ...(documentContent.content || []).map(section => 
+          `${section.heading || ""}. ${(section.blocks || []).map(block => 
+            block.type === "paragraph" ? block.text : 
+            block.type === "list" && block.items ? block.items.join(". ") : ""
+          ).filter(Boolean).join(" ")}`
+        )
+      ].filter(Boolean).join(". ")
+
+      const utterance = new SpeechSynthesisUtterance(textToRead)
+      utterance.lang = 'en-US'
+      utterance.rate = 0.9
+      utterance.pitch = 1
+      utterance.volume = 1
+
+      utterance.onend = () => {
+        setIsPlaying(false)
+        setIsPaused(false)
+      }
+
+      utterance.onerror = () => {
+        setIsPlaying(false)
+        setIsPaused(false)
+      }
+
+      utteranceRef.current = utterance
+      synthRef.current.speak(utterance)
+      setIsPlaying(true)
+      setIsPaused(false)
+    }
+  }
+
+  // Stop reading
+  const stopReading = () => {
+    if (synthRef.current) {
+      synthRef.current.cancel()
+      setIsPlaying(false)
+      setIsPaused(false)
+    }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopReading()
+    }
+  }, [])
+
+  // Handle PDF download
+  const handleDownloadPDF = () => {
+    // Create a simple HTML content for PDF
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${documentContent.document.title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; }
+            h1 { color: #628F07; font-size: 32px; margin-bottom: 10px; }
+            h2 { color: #628F07; font-size: 24px; margin-top: 30px; margin-bottom: 15px; }
+            h3 { color: #628F07; font-size: 20px; margin-top: 20px; margin-bottom: 10px; }
+            p { line-height: 1.6; margin-bottom: 15px; }
+            ul { margin-left: 20px; margin-bottom: 15px; }
+            li { margin-bottom: 8px; }
+            .metadata { color: #666; font-size: 14px; margin-bottom: 30px; }
+          </style>
+        </head>
+        <body>
+          <h1>${documentContent.document.title}</h1>
+          ${documentContent.document.subtitle ? `<h2>${documentContent.document.subtitle}</h2>` : ''}
+          <div class="metadata">
+            ${documentContent.document.authors.length > 0 ? `<p><strong>Authors:</strong> ${documentContent.document.authors.map(a => a.name).join(", ")}</p>` : ''}
+            ${documentContent.document.publicationDate ? `<p><strong>Publication Date:</strong> ${documentContent.document.publicationDate}</p>` : ''}
+          </div>
+          ${(documentContent.content || []).map(section => `
+            <h${section.level}>${section.heading || "Section"}</h${section.level}>
+            ${(section.blocks || []).map(block => {
+              if (block.type === "paragraph" && block.text) {
+                return `<p>${block.text}</p>`
+              } else if (block.type === "list" && block.items && Array.isArray(block.items)) {
+                return `<ul>${block.items.map(item => `<li>${item}</li>`).join("")}</ul>`
+              }
+              return ""
+            }).join("")}
+          `).join("")}
+        </body>
+      </html>
+    `
+
+    // Create a blob and download
+    const blob = new Blob([htmlContent], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${documentContent.document.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.html`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+
+    // Note: For actual PDF generation, you'd need a library like jsPDF or html2pdf
+    // This creates an HTML file that can be printed to PDF
+  }
+
+  // Filter content based on search query
+  const filterContentBySearch = (content: string[]) => {
+    if (!searchQuery.trim()) return content
+    const query = searchQuery.toLowerCase()
+    return content.filter(item => item.toLowerCase().includes(query))
+  }
 
   // Extract content for sections - Word document content is intelligently mapped
   // Content has already been enriched and mapped by the knowledge extractor
   const getSectionContent = (sectionKey: keyof Sections) => {
     if (!sections[sectionKey]) return []
+    
+    // Ensure content array exists
+    if (!documentContent.content || !Array.isArray(documentContent.content)) {
+      console.warn("documentContent.content is not available for section:", sectionKey)
+      return []
+    }
     
     // Find matching section in document content (by title or key)
     const sectionTitles: Record<keyof Sections, string> = {
@@ -79,8 +289,10 @@ export function KnowledgeHubTemplate({
     
     // Find section by title match
     const matchingSection = documentContent.content.find(
-      (section) => section.heading.toLowerCase().includes(targetTitle.toLowerCase()) ||
-                   targetTitle.toLowerCase().includes(section.heading.toLowerCase())
+      (section) => section && section.heading && (
+        section.heading.toLowerCase().includes(targetTitle.toLowerCase()) ||
+        targetTitle.toLowerCase().includes(section.heading.toLowerCase())
+      )
     )
 
     if (matchingSection) {
@@ -99,17 +311,22 @@ export function KnowledgeHubTemplate({
     // Fallback: use first available content from document
     // NEVER return empty - always provide meaningful content
     const fallbackContent: string[] = []
-    documentContent.content.forEach((section) => {
-      section.blocks.forEach((block) => {
-        if (block.type === "list" && block.items) {
-          fallbackContent.push(...block.items.slice(0, 3))
-        } else if (block.type === "paragraph" && block.text.length > 20) {
-          fallbackContent.push(block.text.substring(0, 120))
+    if (documentContent.content && Array.isArray(documentContent.content)) {
+      documentContent.content.forEach((section) => {
+        if (section && section.blocks && Array.isArray(section.blocks)) {
+          section.blocks.forEach((block) => {
+            if (block.type === "list" && block.items && Array.isArray(block.items)) {
+              fallbackContent.push(...block.items.slice(0, 3))
+            } else if (block.type === "paragraph" && block.text && block.text.length > 20) {
+              fallbackContent.push(block.text.substring(0, 120))
+            }
+          })
         }
       })
-    })
+    }
 
-    return fallbackContent.slice(0, 8)
+    const content = fallbackContent.slice(0, 8)
+    return filterContentBySearch(content)
   }
 
   return (
@@ -139,9 +356,31 @@ export function KnowledgeHubTemplate({
 
               {/* Download Feature - Feature UI Element */}
               {features.downloadPDF && (
-                <button className="flex items-center gap-2 px-4 py-2 bg-[#628F07] text-white rounded-lg hover:bg-[#628F07]/90 transition-colors">
+                <button 
+                  onClick={handleDownloadPDF}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#628F07] text-white rounded-lg hover:bg-[#628F07]/90 transition-colors"
+                >
                   <Download className="h-4 w-4" />
                   <span className="text-sm font-medium">Download PDF</span>
+                </button>
+              )}
+
+              {/* Read Aloud Feature - Feature UI Element */}
+              {features.audioNarration && (
+                <button 
+                  onClick={handleReadAloud}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isPlaying ? "bg-[#628F07]/10 text-[#628F07]" : "hover:bg-gray-100 text-gray-600"
+                  }`}
+                  title={isPlaying ? (isPaused ? "Resume reading" : "Pause reading") : "Read aloud"}
+                >
+                  {isPlaying && !isPaused ? (
+                    <Pause className="h-5 w-5" />
+                  ) : isPaused ? (
+                    <Play className="h-5 w-5" />
+                  ) : (
+                    <Volume2 className="h-5 w-5" />
+                  )}
                 </button>
               )}
 
@@ -149,13 +388,6 @@ export function KnowledgeHubTemplate({
               {features.aiChatbot && (
                 <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Bookmark">
                   <Bookmark className="h-5 w-5 text-gray-600" />
-                </button>
-              )}
-
-              {/* Share Feature - Feature UI Element */}
-              {features.audioNarration && (
-                <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Share">
-                  <Share2 className="h-5 w-5 text-gray-600" />
                 </button>
               )}
             </div>
@@ -298,138 +530,210 @@ export function KnowledgeHubTemplate({
           {/* CONTENT GRID - Card-based layout */}
           <main className="flex-1">
             <div className="space-y-8">
-              {/* Overview Section */}
-              {sections.about && (
+              {/* Section Navigation - Clickable sections */}
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(sections).map(([key, enabled]) => {
+                  if (!enabled) return null
+                  const sectionNames: Record<string, string> = {
+                    about: "Overview",
+                    executiveSummary: "Executive Summary",
+                    additionalresources: "Key Resources",
+                    relatedreports: "Related Articles",
+                    asktheauthor: "FAQs",
+                    avlearningzone: "Learning Zone",
+                    casestudyexplorer: "Case Studies",
+                    webinarsandevents: "Webinars & Events",
+                  }
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setSelectedSection(selectedSection === key ? null : key as keyof Sections)
+                        // Stop reading when switching sections
+                        if (isPlaying) stopReading()
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        selectedSection === key
+                          ? "bg-[#628F07] text-white"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      {sectionNames[key] || key}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Filter content based on selected filters */}
+              {(() => {
+                // Safely filter content if it exists
+                if (!documentContent.content || !Array.isArray(documentContent.content)) {
+                  return null
+                }
+                
+                const filteredContent = documentContent.content.filter(section => {
+                  if (selectedCollection) {
+                    const collections = documentContent.document?.collections || []
+                    const hasCollection = collections.some(
+                      (c: any) => c.name === selectedCollection
+                    )
+                    if (!hasCollection) return false
+                  }
+                  if (selectedAuthor) {
+                    const authors = documentContent.document?.authors || []
+                    const hasAuthor = authors.some(
+                      (a: any) => a.name === selectedAuthor
+                    )
+                    if (!hasAuthor) return false
+                  }
+                  return true
+                })
+                return null // Filters are applied to the sections display, not content filtering
+              })()}
+
+              {/* Show selected section in one box, or show all sections */}
+              {selectedSection ? (
                 <section>
                   <div className="flex items-center gap-2 mb-4">
                     <FileText className="h-5 w-5 text-[#628F07]" />
-                    <h2 className="text-2xl font-bold text-foreground">Overview</h2>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {getSectionContent("about").map((item, index) => (
-                      <Card key={index} className="border border-gray-200 hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="w-2 h-2 rounded-full bg-[#628F07] mt-2 flex-shrink-0"></div>
-                            <p className="text-sm text-foreground leading-6">{item}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Executive Summary Section */}
-              {sections.executiveSummary && (
-                <section>
-                  <div className="flex items-center gap-2 mb-4">
-                    <TrendingUp className="h-5 w-5 text-[#628F07]" />
-                    <h2 className="text-2xl font-bold text-foreground">Executive Summary</h2>
+                    <h2 className="text-2xl font-bold text-foreground">
+                      {selectedSection === "about" ? "Overview" :
+                       selectedSection === "executiveSummary" ? "Executive Summary" :
+                       selectedSection === "additionalresources" ? "Key Resources" :
+                       selectedSection === "relatedreports" ? "Related Articles" :
+                       selectedSection === "asktheauthor" ? "Frequently Asked Questions" :
+                       selectedSection === "avlearningzone" ? "Learning Zone" :
+                       selectedSection === "casestudyexplorer" ? "Case Studies" :
+                       selectedSection === "webinarsandevents" ? "Webinars and Events" : selectedSection}
+                    </h2>
                   </div>
                   <Card className="border border-gray-200">
                     <CardContent className="p-6">
-                      <ul className="space-y-3">
-                        {getSectionContent("executiveSummary").map((item, index) => (
-                          <li key={index} className="flex items-start gap-3">
-                            <CheckCircle2 className="h-5 w-5 text-[#628F07] flex-shrink-0 mt-0.5" />
-                            <span className="text-sm text-foreground leading-6">{item}</span>
-                          </li>
+                      <div className="space-y-4">
+                        {getSectionContent(selectedSection).map((item, index) => (
+                          <div key={index} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                            <div className="w-2 h-2 rounded-full bg-[#628F07] mt-2 flex-shrink-0"></div>
+                            <p className="text-sm text-foreground leading-6 flex-1">{item}</p>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     </CardContent>
                   </Card>
                 </section>
-              )}
-
-              {/* Key Resources Section */}
-              {sections.additionalresources && (
-                <section>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Tag className="h-5 w-5 text-[#628F07]" />
-                    <h2 className="text-2xl font-bold text-foreground">Key Resources</h2>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {getSectionContent("additionalresources").slice(0, 6).map((item, index) => (
-                      <Card key={index} className="border border-gray-200 hover:shadow-md transition-shadow group">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between">
-                            <CardTitle className="text-base font-semibold text-foreground">
-                              Resource {index + 1}
-                            </CardTitle>
-                            {/* Accelerator Badge */}
-                            {index < 2 && (
-                              <span className="px-2 py-1 text-xs font-medium bg-[#628F07]/10 text-[#628F07] rounded-md">
-                                Featured
-                              </span>
-                            )}
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm text-muted-foreground mb-3">{item}</p>
-                          <button className="flex items-center gap-2 text-sm text-[#628F07] font-medium group-hover:gap-3 transition-all">
-                            Learn more
-                            <ArrowRight className="h-4 w-4" />
-                          </button>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Related Articles Section */}
-              {sections.relatedreports && (
-                <section>
-                  <div className="flex items-center gap-2 mb-4">
-                    <FileText className="h-5 w-5 text-[#628F07]" />
-                    <h2 className="text-2xl font-bold text-foreground">Related Articles</h2>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {getSectionContent("relatedreports").slice(0, 6).map((item, index) => (
-                      <Card key={index} className="border border-gray-200 hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-[#628F07]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <FileText className="h-5 w-5 text-[#628F07]" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm text-foreground leading-6 mb-2">{item}</p>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />
-                                <span>5 min read</span>
+              ) : (
+                <>
+                  {/* Overview Section */}
+                  {sections.about && (
+                    <section>
+                      <div className="flex items-center gap-2 mb-4">
+                        <FileText className="h-5 w-5 text-[#628F07]" />
+                        <h2 className="text-2xl font-bold text-foreground">Overview</h2>
+                      </div>
+                      <Card className="border border-gray-200">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            {getSectionContent("about").map((item, index) => (
+                              <div key={index} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                                <div className="w-2 h-2 rounded-full bg-[#628F07] mt-2 flex-shrink-0"></div>
+                                <p className="text-sm text-foreground leading-6 flex-1">{item}</p>
                               </div>
-                            </div>
+                            ))}
                           </div>
                         </CardContent>
                       </Card>
-                    ))}
-                  </div>
-                </section>
-              )}
+                    </section>
+                  )}
 
-              {/* FAQs Section */}
-              {sections.asktheauthor && (
-                <section>
-                  <div className="flex items-center gap-2 mb-4">
-                    <FileText className="h-5 w-5 text-[#628F07]" />
-                    <h2 className="text-2xl font-bold text-foreground">Frequently Asked Questions</h2>
-                  </div>
-                  <div className="space-y-3">
-                    {getSectionContent("asktheauthor").slice(0, 5).map((item, index) => (
-                      <Card key={index} className="border border-gray-200">
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-3">
-                            <div className="w-6 h-6 bg-[#628F07]/10 rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-bold text-[#628F07]">Q</span>
-                            </div>
-                            <p className="text-sm text-foreground leading-6">{item}</p>
+                  {/* Executive Summary Section */}
+                  {sections.executiveSummary && (
+                    <section>
+                      <div className="flex items-center gap-2 mb-4">
+                        <TrendingUp className="h-5 w-5 text-[#628F07]" />
+                        <h2 className="text-2xl font-bold text-foreground">Executive Summary</h2>
+                      </div>
+                      <Card className="border border-gray-200">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            {getSectionContent("executiveSummary").map((item, index) => (
+                              <div key={index} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                                <CheckCircle2 className="h-5 w-5 text-[#628F07] flex-shrink-0 mt-0.5" />
+                                <span className="text-sm text-foreground leading-6 flex-1">{item}</span>
+                              </div>
+                            ))}
                           </div>
                         </CardContent>
                       </Card>
-                    ))}
-                  </div>
-                </section>
+                    </section>
+                  )}
+
+                  {/* Key Resources Section */}
+                  {sections.additionalresources && (
+                    <section>
+                      <div className="flex items-center gap-2 mb-4">
+                        <Tag className="h-5 w-5 text-[#628F07]" />
+                        <h2 className="text-2xl font-bold text-foreground">Key Resources</h2>
+                      </div>
+                      <Card className="border border-gray-200">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            {getSectionContent("additionalresources").slice(0, 6).map((item, index) => (
+                              <div key={index} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                                <div className="w-2 h-2 rounded-full bg-[#628F07] mt-2 flex-shrink-0"></div>
+                                <p className="text-sm text-foreground leading-6 flex-1">{item}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </section>
+                  )}
+
+                  {/* Related Articles Section */}
+                  {sections.relatedreports && (
+                    <section>
+                      <div className="flex items-center gap-2 mb-4">
+                        <FileText className="h-5 w-5 text-[#628F07]" />
+                        <h2 className="text-2xl font-bold text-foreground">Related Articles</h2>
+                      </div>
+                      <Card className="border border-gray-200">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            {getSectionContent("relatedreports").slice(0, 6).map((item, index) => (
+                              <div key={index} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                                <div className="w-2 h-2 rounded-full bg-[#628F07] mt-2 flex-shrink-0"></div>
+                                <p className="text-sm text-foreground leading-6 flex-1">{item}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </section>
+                  )}
+
+                  {/* FAQs Section */}
+                  {sections.asktheauthor && (
+                    <section>
+                      <div className="flex items-center gap-2 mb-4">
+                        <FileText className="h-5 w-5 text-[#628F07]" />
+                        <h2 className="text-2xl font-bold text-foreground">Frequently Asked Questions</h2>
+                      </div>
+                      <Card className="border border-gray-200">
+                        <CardContent className="p-6">
+                          <div className="space-y-4">
+                            {getSectionContent("asktheauthor").slice(0, 5).map((item, index) => (
+                              <div key={index} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                                <div className="w-6 h-6 bg-[#628F07]/10 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-bold text-[#628F07]">Q</span>
+                                </div>
+                                <p className="text-sm text-foreground leading-6 flex-1">{item}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </section>
+                  )}
+                </>
               )}
             </div>
           </main>

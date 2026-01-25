@@ -19,6 +19,7 @@ import { toast } from "sonner"
 interface CreateDocumentViewProps {
   onBack: () => void
   onDocumentCreated?: (document: DashboardDocument) => void
+  onTemplatePublished?: (templateId: string) => void
 }
 
 const CUSTOM_TEMPLATES = [
@@ -107,7 +108,7 @@ const PUBLICATION_OPTIONS = [
   { id: "draftOnly", label: "Save as draft", description: "Keep this knimbu private until ready" },
 ]
 
-export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocumentViewProps) {
+export function CreateDocumentView({ onBack, onDocumentCreated, onTemplatePublished }: CreateDocumentViewProps) {
   const [title, setTitle] = useState("")
   const [subtitle, setSubtitle] = useState("")
   const [listedPublicationDate, setListedPublicationDate] = useState("")
@@ -298,24 +299,8 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
 
         toast.success("Preview generated successfully!")
 
-        // Create dashboard document and save it (but don't navigate away yet - let preview show first)
-        if (onDocumentCreated) {
-          const dashboardDoc: DashboardDocument = {
-            id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            title: result.preview.document.title,
-            subtitle: result.preview.document.subtitle,
-            template: templateConfig.name,
-            templateId: result.templateId,
-            collections: result.preview.document.collections.map((c: any) => c.name),
-            createdAt: new Date().toISOString(),
-            status: publicationOption === "immediatePublish" ? "published" : "draft",
-            documentContent: result.preview,
-            image: "/placeholder.jpg", // Default placeholder, can be enhanced later
-            views: 0, // Initialize views to 0 for new documents
-          }
-          // Save document but don't navigate - preview will show
-          onDocumentCreated(dashboardDoc)
-        }
+        // Don't save automatically - wait for publish button
+        // Preview will show and user can click "Publish" when ready
       } else {
         throw new Error(result.error || "Failed to generate preview")
       }
@@ -788,6 +773,13 @@ export function CreateDocumentView({ onBack, onDocumentCreated }: CreateDocument
           templateConfig={previewData.templateConfig}
           features={previewData.features}
           sections={previewData.sections}
+          onPublished={(templateId) => {
+            if (onTemplatePublished) {
+              onTemplatePublished(templateId)
+            }
+            setShowPreview(false)
+            onBack() // Go back to dashboard
+          }}
         />
       )}
     </div>

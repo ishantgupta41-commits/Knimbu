@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Filter, ChevronDown, Layers, Grid3x3, Eye, Calendar, ChevronLeft, ChevronRight, Search } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Filter, ChevronDown, Layers, Grid3x3, Eye, Calendar, ChevronLeft, ChevronRight, Search, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -114,10 +115,21 @@ const defaultDocuments: DashboardDocument[] = [
 ]
 
 export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibraryProps) {
+  const router = useRouter()
   const [viewMode, setViewMode] = useState("my") // "my" or "all"
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState("")
   const itemsPerPage = 8
+
+  const handleViewTemplate = (doc: DashboardDocument) => {
+    // If document has an ID (published template), navigate to preview page
+    // Otherwise, show preview
+    if (doc.id) {
+      router.push(`/preview/${doc.id}`)
+    } else if (onPreview) {
+      onPreview(doc)
+    }
+  }
 
   const filteredDocuments = documents.filter(
     (doc) =>
@@ -188,7 +200,11 @@ export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibrary
 
       <div className="grid gap-4 md:grid-cols-3">
         {currentDocuments.map((doc) => (
-          <Card key={doc.id} className="overflow-hidden transition-all hover:shadow-lg hover:scale-[1.02] p-0">
+          <Card 
+            key={doc.id} 
+            className="overflow-hidden transition-all hover:shadow-lg hover:scale-[1.02] p-0 cursor-pointer"
+            onClick={() => handleViewTemplate(doc)}
+          >
             <div className="flex flex-col h-full">
               <div className="relative h-24 w-full bg-muted">
                 <Image src={doc.image || "/placeholder.svg"} alt={doc.title} fill className="object-cover" />
@@ -242,10 +258,22 @@ export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibrary
                     borderColor: "#628F07",
                     color: "#628F07",
                   }}
-                  onClick={() => onPreview?.(doc)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleViewTemplate(doc)
+                  }}
                 >
-                  <Eye className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
-                  Preview
+                  {doc.id ? (
+                    <>
+                      <ExternalLink className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
+                      View Preview
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="mr-1 h-3 w-3" style={{ color: "#628F07" }} />
+                      Preview
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
