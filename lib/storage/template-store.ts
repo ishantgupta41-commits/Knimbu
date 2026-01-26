@@ -246,15 +246,45 @@ export async function getTemplate(id: string, userId?: string): Promise<StoredTe
   return templatesStore.get(id)
 }
 
-export async function getAllTemplates(userId: string): Promise<StoredTemplate[]> {
-  if (isDynamoDBConfigured()) {
-    const result = await getAllTemplatesFromDynamoDB(userId)
-    // If DynamoDB returns results, use them; otherwise fall back
-    if (result.length > 0) return result
+export async function getAllTemplates(userId?: string): Promise<StoredTemplate[]> {
+  // If userId is provided, return user-specific templates
+  if (userId) {
+    if (isDynamoDBConfigured()) {
+      const result = await getAllTemplatesFromDynamoDB(userId)
+      // If DynamoDB returns results, use them; otherwise fall back
+      if (result.length > 0) return result
+    }
+    // Fall back to in-memory storage
+    return Array.from(templatesStore.values())
+      .filter(t => t.userId === userId)
   }
-  // Fall back to in-memory storage
+  
+  // If no userId, return ALL published templates (public access)
+  if (isDynamoDBConfigured()) {
+    try {
+      const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb")
+      const { DynamoDBDocumentClient, ScanCommand } = await import("@aws-sdk/lib-dynamodb")
+
+      const client = new DynamoDBClient({ region: process.env.AWS_REGION })
+      const docClient = DynamoDBDocumentClient.from(client)
+
+      const result = await docClient.send(new ScanCommand({
+        TableName: process.env.DYNAMODB_TABLE_NAME
+      }))
+
+      return (result.Items || []) as StoredTemplate[]
+    } catch (error: any) {
+      if (error?.name === 'ValidationException' || error?.__type?.includes('ValidationException')) {
+        console.warn("DynamoDB schema mismatch - falling back to in-memory storage")
+        return Array.from(templatesStore.values())
+      }
+      console.error("DynamoDB scan error:", error)
+      return Array.from(templatesStore.values())
+    }
+  }
+  
+  // Fall back to in-memory storage - return all templates
   return Array.from(templatesStore.values())
-    .filter(t => t.userId === userId)
 }
 
 export async function saveTemplate(template: StoredTemplate): Promise<void> {

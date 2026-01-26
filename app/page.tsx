@@ -28,15 +28,17 @@ export default function DashboardPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [previewFeatures, setPreviewFeatures] = useState<any>(null)
   const [previewSections, setPreviewSections] = useState<any>(null)
+  const [viewMode, setViewMode] = useState<"all" | "my">("all") // Default to "all"
 
-  // Load published templates from API
+  // Load published templates from API - based on viewMode
   useEffect(() => {
     const loadTemplates = async () => {
       if (!isAuthenticated || isLoading) return
       
       try {
         const userId = localStorage.getItem("knimbu_user_id") || "default-user"
-        const response = await fetch("/api/templates", {
+        // Fetch templates based on current viewMode
+        const response = await fetch(`/api/templates?filter=${viewMode}`, {
           headers: {
             "x-user-id": userId
           }
@@ -68,7 +70,7 @@ export default function DashboardPage() {
     }
 
     loadTemplates()
-  }, [isAuthenticated, isLoading])
+  }, [isAuthenticated, isLoading, viewMode])
 
   const handleNavClick = () => {
     setView("dashboard")
@@ -90,7 +92,8 @@ export default function DashboardPage() {
     const loadTemplates = async () => {
       try {
         const userId = localStorage.getItem("knimbu_user_id") || "default-user"
-        const response = await fetch("/api/templates", {
+        // Reload all templates after publishing
+        const response = await fetch("/api/templates?filter=all", {
           headers: {
             "x-user-id": userId
           }
@@ -155,6 +158,8 @@ export default function DashboardPage() {
                 <MyLibrary 
                   documents={documents.filter((d) => d.status === "published")} 
                   onPreview={handlePreview}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
                 />
               </div>
             ) : (

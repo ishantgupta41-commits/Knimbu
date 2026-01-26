@@ -11,17 +11,27 @@ import { randomUUID } from "crypto"
 
 /**
  * GET /api/templates
- * Get all templates for the authenticated user
+ * Get all published templates (public) or user-specific templates
+ * Query params: ?filter=all (default) or ?filter=my
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get user ID from auth (dummy for now - replace with real auth)
-    // In production, get from session/JWT token
-    const userId = request.headers.get("x-user-id") || "default-user"
+    const { searchParams } = new URL(request.url)
+    const filter = searchParams.get("filter") || "all" // Default to "all"
     
-    // Get all templates for user
-    const userTemplates = await getAllTemplates(userId)
-    const templatesWithoutUserId = userTemplates.map(({ userId, ...template }) => template) // Remove userId from response
+    let templates: StoredTemplate[]
+    
+    if (filter === "my") {
+      // Get user-specific templates
+      const userId = request.headers.get("x-user-id") || "default-user"
+      templates = await getAllTemplates(userId)
+    } else {
+      // Get ALL published templates (public access)
+      templates = await getAllTemplates()
+    }
+    
+    // Remove userId from response for security
+    const templatesWithoutUserId = templates.map(({ userId, ...template }) => template)
     
     return NextResponse.json({
       success: true,

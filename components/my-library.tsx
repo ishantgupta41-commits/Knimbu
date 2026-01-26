@@ -12,6 +12,8 @@ import { DashboardDocument } from "@/lib/types/dashboard"
 interface MyLibraryProps {
   documents?: DashboardDocument[]
   onPreview?: (document: DashboardDocument) => void
+  viewMode?: "all" | "my"
+  onViewModeChange?: (mode: "all" | "my") => void
 }
 
 // Default mock data for when no documents are provided
@@ -114,9 +116,16 @@ const defaultDocuments: DashboardDocument[] = [
   },
 ]
 
-export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibraryProps) {
+export function MyLibrary({ 
+  documents = defaultDocuments, 
+  onPreview,
+  viewMode: externalViewMode,
+  onViewModeChange
+}: MyLibraryProps) {
   const router = useRouter()
-  const [viewMode, setViewMode] = useState("my") // "my" or "all"
+  const [internalViewMode, setInternalViewMode] = useState<"all" | "my">("all")
+  const viewMode = externalViewMode ?? internalViewMode
+  const setViewMode = onViewModeChange ?? setInternalViewMode
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState("")
   const itemsPerPage = 8
@@ -131,12 +140,14 @@ export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibrary
     }
   }
 
-  const filteredDocuments = documents.filter(
-    (doc) =>
+  // Filter documents by search query (viewMode filtering is handled by API)
+  const filteredDocuments = documents.filter((doc) => {
+    return (
       doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       doc.template.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.collections.some((col) => col.toLowerCase().includes(searchQuery.toLowerCase())),
-  )
+      doc.collections.some((col) => col.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
+  })
 
   const totalPages = Math.ceil(filteredDocuments.length / itemsPerPage)
 
@@ -176,16 +187,6 @@ export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibrary
 
         <div className="ml-auto flex items-center gap-2 rounded-full bg-secondary p-1">
           <button
-            onClick={() => setViewMode("my")}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
-              viewMode === "my"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            My Content
-          </button>
-          <button
             onClick={() => setViewMode("all")}
             className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
               viewMode === "all"
@@ -193,7 +194,17 @@ export function MyLibrary({ documents = defaultDocuments, onPreview }: MyLibrary
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            All Content
+            All Templates
+          </button>
+          <button
+            onClick={() => setViewMode("my")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
+              viewMode === "my"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            My Templates
           </button>
         </div>
       </div>
