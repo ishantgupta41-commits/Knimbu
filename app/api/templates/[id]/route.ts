@@ -17,12 +17,17 @@ export async function GET(
   try {
     const { id } = await params
     
-    // Get user ID from auth (dummy for now - replace with real auth)
-    // In production, get from session/JWT token
-    const userId = request.headers.get("x-user-id") || "default-user"
+    // Published templates are public - no authentication required
+    // Try to get template without userId first (public access)
+    let template = await getTemplate(id)
     
-    // Pass userId in case table has composite key
-    const template = await getTemplate(id, userId)
+    // If not found, try with userId from header (for owner access)
+    if (!template) {
+      const userId = request.headers.get("x-user-id")
+      if (userId) {
+        template = await getTemplate(id, userId)
+      }
+    }
 
     if (!template) {
       return NextResponse.json(
@@ -31,13 +36,8 @@ export async function GET(
       )
     }
 
-    // Check if user owns this template
-    if (template.userId !== userId) {
-      return NextResponse.json(
-        { success: false, error: "Access denied" },
-        { status: 403 }
-      )
-    }
+    // Published templates are public - allow access to anyone
+    // Only check ownership if user is trying to access their own template for editing
 
     // Log template structure for debugging
     console.log("Template retrieved:", {

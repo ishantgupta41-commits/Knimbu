@@ -6,14 +6,15 @@ import { useAuth } from "@/contexts/auth-context"
 import { DocumentPreview } from "@/components/document-preview"
 import { AIChatbot } from "@/components/ai-chatbot"
 import { DocumentContent, TemplateConfig, Features, Sections } from "@/lib/types/document"
-import { Loader2, Rocket, CheckCircle2 } from "lucide-react"
+import { Loader2, Rocket, CheckCircle2, ArrowLeft, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import Link from "next/link"
 
-export default function TemplatePage() {
+export default function PreviewPage() {
   const params = useParams()
   const router = useRouter()
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated } = useAuth()
   const [template, setTemplate] = useState<{
     documentContent: DocumentContent
     templateConfig: TemplateConfig
@@ -32,25 +33,13 @@ export default function TemplatePage() {
   const [currentSections, setCurrentSections] = useState<Sections | null>(null)
 
   useEffect(() => {
-    if (authLoading) return
-
-    if (!isAuthenticated) {
-      router.push("/login")
-      return
-    }
-
-    // Fetch template
+    // Fetch template - no authentication required for published templates
     const fetchTemplate = async () => {
       try {
         setLoading(true)
-        // Get user ID from localStorage (dummy auth)
-        const userId = localStorage.getItem("knimbu_user_id") || "default-user"
         
-        const response = await fetch(`/api/templates/${params.id}`, {
-          headers: {
-            "x-user-id": userId
-          }
-        })
+        // Fetch without authentication - published templates are public
+        const response = await fetch(`/api/templates/${params.id}`)
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -92,9 +81,9 @@ export default function TemplatePage() {
     }
 
     fetchTemplate()
-  }, [params.id, isAuthenticated, authLoading, router])
+  }, [params.id, router])
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -123,6 +112,11 @@ export default function TemplatePage() {
   }
 
   const handleDeploy = async () => {
+    if (!isAuthenticated) {
+      router.push("/login")
+      return
+    }
+    
     try {
       setIsDeploying(true)
       const userId = localStorage.getItem("knimbu_user_id") || "default-user"
@@ -174,6 +168,11 @@ export default function TemplatePage() {
     updatedFeatures: Features,
     updatedSections: Sections
   ) => {
+    if (!isAuthenticated) {
+      router.push("/login")
+      return
+    }
+    
     try {
       const userId = localStorage.getItem("knimbu_user_id") || "default-user"
       
@@ -230,45 +229,54 @@ export default function TemplatePage() {
       {/* Action Buttons Bar - Sticky at top */}
       <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700">Template View</span>
+          <Link href="/" className="flex items-center gap-2 text-gray-700 hover:text-[#628F07] transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm font-medium">Back to Home</span>
+          </Link>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            onClick={async () => {
-              // Republish current template state
-              await handleRepublish(currentContent, currentFeatures, currentSections)
-            }}
-            className="bg-[#628F07] hover:bg-[#628F07]/90 text-white"
-            size="sm"
-          >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Republish
-          </Button>
-          {isDeployed ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-md">
-              <CheckCircle2 className="h-3 w-3 text-green-600" />
-              <span className="text-xs font-medium text-green-700">Deployed</span>
-            </div>
-          ) : (
+          {isAuthenticated && (
             <Button
-              onClick={handleDeploy}
-              disabled={isDeploying}
-              variant="outline"
+              onClick={async () => {
+                // Republish current template state
+                await handleRepublish(currentContent, currentFeatures, currentSections)
+              }}
+              className="bg-[#628F07] hover:bg-[#628F07]/90 text-white"
               size="sm"
-              className="border-[#628F07] text-[#628F07] hover:bg-[#628F07]/10"
             >
-              {isDeploying ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                  Deploying...
-                </>
-              ) : (
-                <>
-                  <Rocket className="h-3 w-3 mr-2" />
-                  Deploy
-                </>
-              )}
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Republish
             </Button>
+          )}
+          {isAuthenticated && (
+            <>
+              {isDeployed ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-md">
+                  <CheckCircle2 className="h-3 w-3 text-green-600" />
+                  <span className="text-xs font-medium text-green-700">Deployed</span>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleDeploy}
+                  disabled={isDeploying}
+                  variant="outline"
+                  size="sm"
+                  className="border-[#628F07] text-[#628F07] hover:bg-[#628F07]/10"
+                >
+                  {isDeploying ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                      Deploying...
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="h-3 w-3 mr-2" />
+                      Deploy
+                    </>
+                  )}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -282,16 +290,18 @@ export default function TemplatePage() {
         sections={currentSections}
       />
 
-      {/* AI Chatbot */}
-      <AIChatbot
-        documentContent={template.documentContent}
-        templateConfig={template.templateConfig}
-        features={template.features}
-        sections={template.sections}
-        onTemplateChange={handleTemplateChange}
-        onRepublish={handleRepublish}
-        onDiscard={handleDiscard}
-      />
+      {/* AI Chatbot - Only show if authenticated */}
+      {isAuthenticated && (
+        <AIChatbot
+          documentContent={template.documentContent}
+          templateConfig={template.templateConfig}
+          features={template.features}
+          sections={template.sections}
+          onTemplateChange={handleTemplateChange}
+          onRepublish={handleRepublish}
+          onDiscard={handleDiscard}
+        />
+      )}
     </div>
   )
 }

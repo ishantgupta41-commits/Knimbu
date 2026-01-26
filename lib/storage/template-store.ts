@@ -235,13 +235,14 @@ async function saveTemplateToDynamoDB(template: StoredTemplate): Promise<void> {
 }
 
 // Public API - automatically uses DynamoDB if configured, otherwise in-memory
+// Published templates are public - userId is optional for public access
 export async function getTemplate(id: string, userId?: string): Promise<StoredTemplate | undefined> {
   if (isDynamoDBConfigured()) {
     const result = await getTemplateFromDynamoDB(id, userId)
     // If DynamoDB fails or returns nothing, fall back to in-memory
     if (result) return result
   }
-  // Fall back to in-memory storage
+  // Fall back to in-memory storage - return template by ID (public access)
   return templatesStore.get(id)
 }
 
